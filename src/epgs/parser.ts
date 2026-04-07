@@ -12,6 +12,7 @@ import {
   type XmltvChannelNode,
   type XmltvProgrammeNode,
 } from './xml';
+import { parseXmltvTimeRange } from './time';
 
 export interface EpgProgrammeItem {
   start: string; // "HH:mm"
@@ -22,22 +23,6 @@ export interface EpgProgrammeItem {
 export interface EpgChannelJson {
   channel: string;
   epg_data: EpgProgrammeItem[];
-}
-
-/** XMLTV start/stop 格式: 20240314080000 +0800 → 提取 YYYYmmdd 与 HH:mm */
-function parseXmltvTime(
-  startStr: string,
-  stopStr: string
-): { date: string; start: string; end: string } | null {
-  const startMatch = startStr?.match(/^(\d{14})/);
-  const stopMatch = stopStr?.match(/^(\d{14})/);
-  if (!startMatch || !stopMatch) return null;
-  const start = startMatch[1];
-  const stop = stopMatch[1];
-  const date = `${start.slice(0, 4)}-${start.slice(4, 6)}-${start.slice(6, 8)}`;
-  const startTime = `${start.slice(8, 10)}:${start.slice(10, 12)}`;
-  const endTime = `${stop.slice(8, 10)}:${stop.slice(10, 12)}`;
-  return { date, start: startTime, end: endTime };
 }
 
 /** 将频道名转为安全文件名（去掉非法字符） */
@@ -93,7 +78,7 @@ export function parseEpgXml(
     const channelId = readXmlAttr(p, 'channel');
     const startAttr = readXmlAttr(p, 'start');
     const stopAttr = readXmlAttr(p, 'stop');
-    const time = parseXmltvTime(startAttr, stopAttr);
+    const time = parseXmltvTimeRange(startAttr, stopAttr);
     const title = readXmltvProgrammeTitle(p);
     if (!channelId || !time) {
       continue;

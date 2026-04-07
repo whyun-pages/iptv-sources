@@ -24,8 +24,9 @@ import {
   type XmltvNode,
   type XmltvProgrammeNode,
 } from './xml';
+import { formatHourMinute, parseXmltvUtcTimestamp } from './time';
 
-interface EpgPwChannel {
+export interface EpgPwChannel {
   id: string;
   name: string;
 }
@@ -56,7 +57,7 @@ export interface PWEpgProgrammeItem {
  * 从 epg.pw 频道列表页 HTML 中提取频道 ID 与名称
  * 链接格式: href="/last/464609.html?lang=zh-hans"
  */
-function parseChannelListFromHtml(html: string): EpgPwChannel[] {
+export function parseChannelListFromHtml(html: string): EpgPwChannel[] {
   const regex = /href="\/last\/(\d+)\.html\?lang=zh-hans"[^>]*>([^<]+)<\/a>/g;
   const channels: EpgPwChannel[] = [];
   const seen = new Set<string>();
@@ -81,27 +82,6 @@ function formatDate(date: Date): string {
   return `${y}${m}${d}`;
 }
 
-function utcDate(timeStr: string): Date {
-  // 1. 提取各个部分 (通过字符串截取)
-  const year = +timeStr.substring(0, 4);
-  const month = +timeStr.substring(4, 6) - 1; // 月份从 0 开始计数 (0 = 一月)
-  const day = +timeStr.substring(6, 8);
-  const hour = +timeStr.substring(8, 10);
-  const minute = +timeStr.substring(10, 12);
-  const second = +timeStr.substring(12, 14);
-
-  // 2. 使用 Date.UTC 创建 UTC 时间对象
-  // 注：末尾的 +0000 表示这是 UTC 时间
-  const date = new Date(Date.UTC(year, month, day, hour, minute, second));
-  return date;
-}
-
-function formatTime(date: Date): string {
-  const h = String(date.getHours()).padStart(2, '0');
-  const m = String(date.getMinutes()).padStart(2, '0');
-  return `${h}:${m}`;
-}
-
 async function fetchChannelEpg(channelId: string, date: string): Promise<string | null> {
   const url = `https://epg.pw/api/epg.xml?lang=zh-hans&date=${date}&channel_id=${channelId}`;
   try {
@@ -120,7 +100,7 @@ function channelIdFromNode(node: EpgPwChannelNode): string | null {
 /**
  * 解析单份 epg.pw API 返回的 XMLTV 片段
  */
-function parsePwEpgXml(xml: string): {
+export function parsePwEpgXml(xml: string): {
   channels: EpgPwChannelNode[];
   programmes: EpgPwProgrammeNode[];
 } {
@@ -131,6 +111,30 @@ function parsePwEpgXml(xml: string): {
   return {
     channels: normalizeXmlList(tv.channel),
     programmes: normalizeXmlList(tv.programme),
+  };
+}
+
+export function buildPwChannelJson(
+  channelNode: EpgPwChannelNode | undefined,
+  programmes: EpgPwProgrammeNode[]
+): EpgChannelJson {
+  const channel = readXmltvChannelName(channelNode).toLowerCase();
+
+  return {
+    channel,
+    epg_data: programmes
+      .map((programme) => {
+        const startTime = parseXmltvUtcTimestamp(readXmlAttr(programme, 'start'));
+        const endTime = parseXmltvUtcTimestamp(readXmlAttr(programme, 'stop'));
+        if (!startTime || !endTime) return null;
+
+        return {
+          start: formatHourMinute(startTime),
+          end: formatHourMinute(endTime),
+          title: readXmltvProgrammeTitle(programme),
+        };
+      })
+      .filter((item): item is EpgChannelJson['epg_data'][number] => item !== null),
   };
 }
 
@@ -191,23 +195,8 @@ export async function buildEpgPwXml(batchSize = 10, delayMs = 300): Promise<stri
           }
         }
         const currentChannel = chList[0];
-        const currentChannelName = readXmltvChannelName(currentChannel).toLowerCase();
-        const json: EpgChannelJson = {
-          channel: currentChannelName,
-          epg_data: progList
-            .map((prog) => {
-              const start = readXmlAttr(prog, 'start');
-              const stop = readXmlAttr(prog, 'stop');
-              if (!start || !stop) return null;
-
-              return {
-                start: formatTime(utcDate(start)),
-                end: formatTime(utcDate(stop)),
-                title: readXmltvProgrammeTitle(prog),
-              };
-            })
-            .filter((item): item is EpgChannelJson['epg_data'][number] => item !== null),
-        };
+        const json = buildPwChannelJson(currentChannel, progList);
+        const currentChannelName = json.channel;
         const savePath = await mkdir(path.join(basePath, currentChannelName), { recursive: true });
         await writeFile(
           path.join(savePath as string, `${date}.json`),
