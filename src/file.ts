@@ -90,12 +90,16 @@ export const getContent = (src: IRemoteSource) =>
       ? withGithubRawUrlProxy(src.url)
       : src.url;
 
-    // 网络错误和 5xx 视为临时故障重试，4xx 直接返回
+    // 网络错误和 4xx/5xx 均视为临时故障重试，重试次数用尽后返回最后一次响应
     for (let attempt = 1; ; attempt++) {
       try {
         const res = await fetch(url);
-        if (res.status < 500 || attempt >= FETCH_RETRIES) {
+        if (res.status < 400 || attempt >= FETCH_RETRIES) {
           return [res.ok, await res.text(), now] as const;
+        } else {
+          console.warn(
+            `[WARNING] Fetch ${src.name} ${url} failed with status ${res.status}, attempt ${attempt}`
+          );
         }
       } catch (e) {
         if (attempt >= FETCH_RETRIES) throw e;
