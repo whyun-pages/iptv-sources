@@ -49,6 +49,7 @@ jobs:
       - run: pnpm build
       - run: pnpm m3u
         env:
+          CLOSE_SOURCE_PROXY: "true"
           IPTV_PROXY_IP_RANGES: ${{ vars.IPTV_PROXY_IP_RANGES }}
           IPTV_PROXY_PORT: ${{ vars.IPTV_PROXY_PORT }}
       - run: sudo apt-get install -y tree
