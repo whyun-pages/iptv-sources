@@ -64,12 +64,11 @@ jobs:
             pnpm static
             tree m3u
             npx wrangler pages deploy m3u --project-name="${PROJECT_NAME}"
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit --allow-empty -m "chore: schedule refresh (trigger Cloudflare Pages build)"
-            git push
           fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit --allow-empty -m "chore: schedule refresh (trigger Cloudflare Pages build)"
+          git push
 
       # - name: "Jekyll theme"
       #   run: mv ./_config.temp.yml ./m3u/_config.yml
